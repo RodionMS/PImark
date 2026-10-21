@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PiMark v2.4 PRO — Кроссплатформенный процессорный бенчмарк</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app-wrapper">
+    <!-- Верхняя шапка -->
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo-box">π</div>
+        <div class="brand-text">
+          <div class="title-row">
+            <h1>PiMark</h1>
+            <span class="pro-badge">v2.4 PRO</span>
+          </div>
+          <p class="subtitle">Кроссплатформенный процессорный бенчмарк (BigInt + Web Workers)</p>
+        </div>
+      </div>
+
+      <div class="topbar-right">
+        <div class="fps-pill" title="Доказывает, что вычисления идут в фоновых потоках и не блокируют интерфейс">
+          <span class="fps-dot"></span>
+          <span>UI Поток: <strong id="fpsValue">60</strong> FPS</span>
+        </div>
+        <button type="button" class="btn-how" id="openModalBtn">
+          <span>📖</span> Как это работает
+        </button>
+      </div>
+    </header>
+
+    <!-- Верхний ряд карточек: Профиль устройства + Режим тестирования -->
+    <div class="grid-top">
+      <!-- ПРОФИЛЬ УСТРОЙСТВА -->
+      <section class="card">
+        <div class="card-header">
+          <div class="card-title">
+            <span class="dot-icon"></span>
+            <span>ПРОФИЛЬ УСТРОЙСТВА</span>
+          </div>
+          <span class="card-badge" id="deviceTypeBadge">Desktop / PC</span>
+        </div>
+
+        <div class="field-group">
+          <label for="deviceNameInput">Название устройства (для таблицы результатов)</label>
+          <input type="text" id="deviceNameInput" class="device-input" placeholder="Определение устройства..." />
+        </div>
+
+        <div class="specs-grid">
+          <div class="spec-item">
+            <span class="spec-label">Логические ядра</span>
+            <span class="spec-val highlight-cyan" id="specCores">—</span>
+          </div>
+          <div class="spec-item">
+            <span class="spec-label">ОЗУ (оценка браузера)</span>
+            <span class="spec-val highlight-blue" id="specRam">—</span>
+          </div>
+          <div class="spec-item">
+            <span class="spec-label">Платформа / ОС</span>
+            <span class="spec-val" id="specOs">—</span>
+          </div>
+          <div class="spec-item">
+            <span class="spec-label">Экран / Разрешение</span>
+            <span class="spec-val" id="specScreen">—</span>
+          </div>
+        </div>
+
+        <div class="engine-footer" id="specEngine">
+          Движок: определение...
+        </div>
+      </section>
+
+      <!-- РЕЖИМ ТЕСТИРОВАНИЯ И НАГРУЗКА -->
+      <section class="card">
+        <div class="card-header">
+          <div class="card-title">
+            <span class="dot-icon"></span>
+            <span>РЕЖИМ ТЕСТИРОВАНИЯ И НАГРУЗКА</span>
+          </div>
+        </div>
+
+        <!-- Переключатель Single-Core / Multi-Core -->
+        <div class="mode-tabs" id="modeTabs">
+          <button type="button" class="mode-tab active" data-mode="single">
+            ⚡ Single-Core (Точные знаки π)
+          </button>
+          <button type="button" class="mode-tab" data-mode="multi">
+            🔥 Multi-Core (Стресс-тест всех ядер)
+          </button>
+        </div>
+
+        <!-- Описание выбранного режима -->
+        <div class="mode-info-box" id="modeDescription">
+          Вычисляет точные знаки числа π по формуле Джона Мэчина на базе длинной арифметики <code>BigInt</code> в одном потоке. Идеально для проверки однопоточной производительности ядра ЦП.
+        </div>
+
+        <!-- Настройки для Single-Core -->
+        <div id="singleControls" class="controls-panel">
+          <div class="control-label-row">
+            <span>Точность вычисления (пресеты или ввод вручную)</span>
+            <strong class="highlight-cyan" id="singleDigitsLabel">25 000 знаков</strong>
+          </div>
+          <div class="preset-pills" id="digitsPresets">
+            <button type="button" class="pill-btn" data-digits="5000">5 000</button>
+            <button type="button" class="pill-btn" data-digits="10000">10 000</button>
+            <button type="button" class="pill-btn active" data-digits="25000">25 000</button>
+            <button type="button" class="pill-btn" data-digits="50000">50 000</button>
+            <button type="button" class="pill-btn" data-digits="100000">100 000</button>
+          </div>
+
+          <!-- Ручной ввод для Single-Core -->
+          <div class="custom-input-row">
+            <label for="singleCustomInput">Ввести вручную:</label>
+            <div class="custom-input-group">
+              <input
+                type="number"
+                id="singleCustomInput"
+                class="custom-number-input"
+                min="100"
+                max="2000000"
+                step="1000"
+                value="25000"
+                placeholder="Например: 35000"
+              />
+              <span class="input-unit">знаков π</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Настройки для Multi-Core -->
+        <div id="multiControls" class="controls-panel hidden">
+          <div class="control-label-row">
+            <span>Количество потоков (Web Workers)</span>
+            <strong class="highlight-cyan" id="threadsCountLabel">8 потоков</strong>
+          </div>
+          <input type="range" id="threadsSlider" min="1" max="32" value="8" class="range-slider" />
+          <div class="range-sub">
+            <span>Мин: 1</span>
+            <span id="recommendedThreadsText">Рекомендуется: 8</span>
+            <span>Макс: 32</span>
+          </div>
+
+          <div class="control-label-row" style="margin-top: 12px;">
+            <span>Объём параллельной нагрузки (итераций BBP + Нилаканты)</span>
+            <strong class="highlight-cyan" id="multiIterLabel">200 млн итераций</strong>
+          </div>
+          <div class="preset-pills" id="multiPresets">
+            <button type="button" class="pill-btn" data-iter="80000000">Быстрый (80M)</button>
+            <button type="button" class="pill-btn active" data-iter="200000000">Стандарт (200M)</button>
+            <button type="button" class="pill-btn" data-iter="500000000">Тяжёлый (500M)</button>
+            <button type="button" class="pill-btn" data-iter="1000000000">Экстрим (1B)</button>
+          </div>
+
+          <!-- Ручной ввод для Multi-Core -->
+          <div class="custom-input-row">
+            <label for="multiCustomInput">Ввести вручную:</label>
+            <div class="custom-input-group">
+              <input
+                type="number"
+                id="multiCustomInput"
+                class="custom-number-input"
+                min="10000"
+                max="100000000000"
+                step="10000000"
+                value="200000000"
+                placeholder="Например: 350000000"
+              />
+              <span class="input-unit">итераций</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Кнопки запуска -->
+        <div class="run-actions">
+          <button type="button" class="btn-run" id="startBtn">
+            ▶ ЗАПУСТИТЬ БЕНЧМАРК
+          </button>
+          <button type="button" class="btn-stop hidden" id="stopBtn">
+            ■ ОСТАНОВИТЬ
+          </button>
+        </div>
+      </section>
+    </div>
+
+    <!-- Средний ряд: Телеметрия выполнения + Итоговая оценка -->
+    <div class="grid-middle">
+      <!-- ТЕЛЕМЕТРИЯ ВЫПОЛНЕНИЯ -->
+      <section class="card">
+        <div class="card-header">
+          <div class="card-title">
+            <span class="dot-icon"></span>
+            <span>ТЕЛЕМЕТРИЯ ВЫПОЛНЕНИЯ</span>
+          </div>
+          <span class="status-pill" id="statusBadge">Ожидание запуска</span>
+        </div>
+
+        <div class="telemetry-boxes">
+          <div class="tele-box">
+            <span class="tele-label">ВРЕМЯ ВЫПОЛНЕНИЯ</span>
+            <div class="tele-value" id="teleTime">0.000 <small>с</small></div>
+          </div>
+          <div class="tele-box">
+            <span class="tele-label">СКОРОСТЬ ВЫЧИСЛЕНИЙ</span>
+            <div class="tele-value highlight-cyan" id="teleSpeed">0 <small>зн/с</small></div>
+          </div>
+          <div class="tele-box">
+            <span class="tele-label">ПРОГРЕСС ЗАДАЧИ</span>
+            <div class="tele-value highlight-green" id="teleProgress">0%</div>
+          </div>
+        </div>
+
+        <!-- Главный прогресс-бар -->
+        <div class="progress-section">
+          <div class="progress-track">
+            <div class="progress-fill" id="mainProgressBar"></div>
+          </div>
+        </div>
+
+        <!-- Загрузка по потокам (Web Workers) -->
+        <div class="workers-grid-wrap">
+          <div class="workers-title">Активность потоков Web Workers:</div>
+          <div class="workers-bars" id="workersBars"></div>
+        </div>
+
+        <!-- Вычисленные знаки Пи -->
+        <div class="pi-terminal">
+          <div class="pi-terminal-header">
+            <span>Контрольный срез вычисленного числа π (верификация):</span>
+            <button type="button" class="btn-mini" id="copyPiBtn">Копировать π</button>
+          </div>
+          <div class="pi-code" id="piPreviewText">
+            3.14159265358979323846264338327950288419716939937510582097494459230781640628620899...
+          </div>
+        </div>
+      </section>
+
+      <!-- ИТОГОВАЯ ОЦЕНКА -->
+      <section class="card score-card">
+        <div class="card-header">
+          <div class="card-title">
+            <span class="dot-icon"></span>
+            <span>ИТОГОВАЯ ОЦЕНКА</span>
+          </div>
+          <span class="card-badge" id="scoreModeBadge">SINGLE-CORE</span>
+        </div>
+
+        <div class="score-center">
+          <span class="score-label">ИНДЕКС ПРОИЗВОДИТЕЛЬНОСТИ</span>
+          <div class="score-big" id="scoreDisplay">0</div>
+          <span class="score-pts">БАЛЛОВ (PTS)</span>
+          <div class="tier-badge" id="tierBadge">Запустите тест для расчёта индекса</div>
+        </div>
+
+        <div class="score-meta">
+          <div class="meta-box">
+            <span class="meta-label">Лучший Single-Core (это устройство)</span>
+            <strong id="bestSingleVal">—</strong>
+          </div>
+          <div class="meta-box">
+            <span class="meta-label">Лучший Multi-Core (это устройство)</span>
+            <strong id="bestMultiVal">—</strong>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- Нижняя карточка: История ТОЛЬКО реальных устройств -->
+    <section class="card">
+      <div class="card-header history-header">
+        <div>
+          <div class="card-title">
+            <span class="dot-icon"></span>
+            <span>ТАБЛИЦА РЕЗУЛЬТАТОВ (ПРОТЕСТИРОВАННЫЕ УСТРОЙСТВА)</span>
+          </div>
+          <p class="history-subtitle">Сохраняются только реальные замеры без искусственных шаблонов</p>
+        </div>
+
+        <div class="history-controls">
+          <div class="filter-pills" id="historyFilter">
+            <button type="button" class="filter-btn active" data-filter="all">Все</button>
+            <button type="button" class="filter-btn" data-filter="single">Single-Core</button>
+            <button type="button" class="filter-btn" data-filter="multi">Multi-Core</button>
+          </div>
+          <button type="button" class="btn-outline" id="exportJsonBtn">Экспорт JSON</button>
+          <button type="button" class="btn-outline danger" id="clearHistoryBtn">Очистить</button>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table class="results-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Устройство / Платформа</th>
+              <th>Режим</th>
+              <th>Задача</th>
+              <th>Время</th>
+              <th>Скорость</th>
+              <th>Индекс (PTS)</th>
+              <th>Дата</th>
+            </tr>
+          </thead>
+          <tbody id="historyTableBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <!-- Модальное окно: Как устроен бенчмарк PiMark -->
+  <div class="modal-backdrop hidden" id="infoModal">
+    <div class="modal-window">
+      <div class="modal-header">
+        <h3><span>📖</span> Как устроен бенчмарк PiMark</h3>
+        <button type="button" class="modal-close" id="closeModalBtn">✕</button>
+      </div>
+      <div class="modal-body">
+        <p>
+          <strong>1. Режим Single-Core (Точные знаки π):</strong> Использует классическую формулу Джона Мэчина
+          <code class="inline-formula">π/4 = 4·arctan(1/5) - arctan(1/239)</code> на базе длинной целочисленной
+          арифметики <code>BigInt</code>. Так как сложность вычисления растёт квадратично O(N²), система очков
+          автоматически нормализуется, чтобы результаты были сопоставимы при любом числе знаков.
+        </p>
+        <p>
+          <strong>2. Режим Multi-Core (Все ядра):</strong> Создаёт пул параллельных потоков <code>Web Workers</code>
+          (по числу логических ядер процессора) и распределяет между ними заданное количество итераций формулы
+          Бэйли — Боруэйна — Плауффа (BBP) и рядов Нилаканты. Это нагружает все доступные ядра ЦП на 100%.
+        </p>
+        <p>
+          <strong>3. Полная автономность:</strong> Фоновые потоки создаются через внешний <code>worker.js</code>
+          или динамически через <code>Blob URL</code>, поэтому бенчмарк работает как на веб-хостинге, так и без
+          сервера — прямо из локальной папки, с флешки, на смартфоне, ПК или Smart TV.
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-understand" id="understandBtn">Понятно</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
