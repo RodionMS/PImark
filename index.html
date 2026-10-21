@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PiMark v2.4 PRO — Кроссплатформенный процессорный бенчмарк</title>
+  <title>PiMark v2.5 PRO — Кроссплатформенный процессорный бенчмарк</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -15,7 +15,7 @@
         <div class="brand-text">
           <div class="title-row">
             <h1>PiMark</h1>
-            <span class="pro-badge">v2.4 PRO</span>
+            <span class="pro-badge">v2.5 PRO</span>
           </div>
           <p class="subtitle">Кроссплатформенный процессорный бенчмарк (BigInt + Web Workers)</p>
         </div>
@@ -92,12 +92,39 @@
           </button>
         </div>
 
+        <!-- НОВОЕ: Переключатель типа ограничения (По объёму задачи / По времени) -->
+        <div class="limit-switch-wrap">
+          <span class="limit-switch-label">Критерий теста:</span>
+          <div class="limit-tabs" id="limitTabs">
+            <button type="button" class="limit-tab active" data-limit="fixed">
+              🎯 Фиксированный объём
+            </button>
+            <button type="button" class="limit-tab" data-limit="timed">
+              ⏱️ Ограничение по времени
+            </button>
+          </div>
+        </div>
+
         <!-- Описание выбранного режима -->
         <div class="mode-info-box" id="modeDescription">
           Вычисляет точные знаки числа π по формуле Джона Мэчина на базе длинной арифметики <code>BigInt</code> в одном потоке. Идеально для проверки однопоточной производительности ядра ЦП.
         </div>
 
-        <!-- Настройки для Single-Core -->
+        <!-- Ползунок потоков для Multi-Core (доступен и в фиксированном режиме, и по времени) -->
+        <div id="multiThreadsBox" class="controls-panel hidden" style="margin-bottom: 12px;">
+          <div class="control-label-row">
+            <span>Количество потоков (Web Workers)</span>
+            <strong class="highlight-cyan" id="threadsCountLabel">8 потоков</strong>
+          </div>
+          <input type="range" id="threadsSlider" min="1" max="32" value="8" class="range-slider" />
+          <div class="range-sub">
+            <span>Мин: 1</span>
+            <span id="recommendedThreadsText">Рекомендуется: 8</span>
+            <span>Макс: 32</span>
+          </div>
+        </div>
+
+        <!-- Настройки для Single-Core (Фиксированный объём) -->
         <div id="singleControls" class="controls-panel">
           <div class="control-label-row">
             <span>Точность вычисления (пресеты или ввод вручную)</span>
@@ -130,20 +157,9 @@
           </div>
         </div>
 
-        <!-- Настройки для Multi-Core -->
+        <!-- Настройки для Multi-Core (Фиксированный объём) -->
         <div id="multiControls" class="controls-panel hidden">
           <div class="control-label-row">
-            <span>Количество потоков (Web Workers)</span>
-            <strong class="highlight-cyan" id="threadsCountLabel">8 потоков</strong>
-          </div>
-          <input type="range" id="threadsSlider" min="1" max="32" value="8" class="range-slider" />
-          <div class="range-sub">
-            <span>Мин: 1</span>
-            <span id="recommendedThreadsText">Рекомендуется: 8</span>
-            <span>Макс: 32</span>
-          </div>
-
-          <div class="control-label-row" style="margin-top: 12px;">
             <span>Объём параллельной нагрузки (итераций BBP + Нилаканты)</span>
             <strong class="highlight-cyan" id="multiIterLabel">200 млн итераций</strong>
           </div>
@@ -169,6 +185,38 @@
                 placeholder="Например: 350000000"
               />
               <span class="input-unit">итераций</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- НОВОЕ: Настройки для режима «Ограничение по времени» (Таймер) -->
+        <div id="timeControls" class="controls-panel hidden">
+          <div class="control-label-row">
+            <span>Длительность теста (сколько успеет вычислить за время)</span>
+            <strong class="highlight-cyan" id="timeDurationLabel">60 сек (1 мин)</strong>
+          </div>
+          <div class="preset-pills" id="timePresets">
+            <button type="button" class="pill-btn" data-sec="15">15 сек</button>
+            <button type="button" class="pill-btn" data-sec="30">30 сек</button>
+            <button type="button" class="pill-btn active" data-sec="60">1 мин (60с)</button>
+            <button type="button" class="pill-btn" data-sec="120">2 мин (120с)</button>
+            <button type="button" class="pill-btn" data-sec="300">5 мин (300с)</button>
+          </div>
+
+          <div class="custom-input-row">
+            <label for="timeCustomInput">Своё время:</label>
+            <div class="custom-input-group">
+              <input
+                type="number"
+                id="timeCustomInput"
+                class="custom-number-input"
+                min="1"
+                max="3600"
+                step="5"
+                value="60"
+                placeholder="Например: 90"
+              />
+              <span class="input-unit">секунд</span>
             </div>
           </div>
         </div>
@@ -199,7 +247,7 @@
 
         <div class="telemetry-boxes">
           <div class="tele-box">
-            <span class="tele-label">ВРЕМЯ ВЫПОЛНЕНИЯ</span>
+            <span class="tele-label" id="teleTimeLabel">ВРЕМЯ ВЫПОЛНЕНИЯ</span>
             <div class="tele-value" id="teleTime">0.000 <small>с</small></div>
           </div>
           <div class="tele-box">
@@ -207,7 +255,7 @@
             <div class="tele-value highlight-cyan" id="teleSpeed">0 <small>зн/с</small></div>
           </div>
           <div class="tele-box">
-            <span class="tele-label">ПРОГРЕСС ЗАДАЧИ</span>
+            <span class="tele-label" id="teleProgressLabel">ПРОГРЕСС ЗАДАЧИ</span>
             <div class="tele-value highlight-green" id="teleProgress">0%</div>
           </div>
         </div>
@@ -248,10 +296,10 @@
         </div>
 
         <div class="score-center">
-          <span class="score-label">ИНДЕКС ПРОИЗВОДИТЕЛЬНОСТИ</span>
+          <span class="score-label" id="scoreMainCaption">ИНДЕКС ПРОИЗВОДИТЕЛЬНОСТИ</span>
           <div class="score-big" id="scoreDisplay">0</div>
-          <span class="score-pts">БАЛЛОВ (PTS)</span>
-          <div class="tier-badge" id="tierBadge">Запустите тест для расчёта индекса</div>
+          <span class="score-pts" id="scoreUnitCaption">БАЛЛОВ (PTS)</span>
+          <div class="tier-badge" id="tierBadge">Запустите тест для расчёта результата</div>
         </div>
 
         <div class="score-meta">
@@ -275,7 +323,7 @@
             <span class="dot-icon"></span>
             <span>ТАБЛИЦА РЕЗУЛЬТАТОВ (ПРОТЕСТИРОВАННЫЕ УСТРОЙСТВА)</span>
           </div>
-          <p class="history-subtitle">Сохраняются только реальные замеры без искусственных шаблонов</p>
+          <p class="history-subtitle">Сохраняются только реальные замеры (как по объёму задачи, так и по таймеру)</p>
         </div>
 
         <div class="history-controls">
@@ -283,6 +331,7 @@
             <button type="button" class="filter-btn active" data-filter="all">Все</button>
             <button type="button" class="filter-btn" data-filter="single">Single-Core</button>
             <button type="button" class="filter-btn" data-filter="multi">Multi-Core</button>
+            <button type="button" class="filter-btn" data-filter="timed">⏱️ По времени</button>
           </div>
           <button type="button" class="btn-outline" id="exportJsonBtn">Экспорт JSON</button>
           <button type="button" class="btn-outline danger" id="clearHistoryBtn">Очистить</button>
@@ -296,10 +345,10 @@
               <th>#</th>
               <th>Устройство / Платформа</th>
               <th>Режим</th>
-              <th>Задача</th>
+              <th>Условие / Задача</th>
               <th>Время</th>
               <th>Скорость</th>
-              <th>Индекс (PTS)</th>
+              <th>Итог (Объём / PTS)</th>
               <th>Дата</th>
             </tr>
           </thead>
@@ -320,18 +369,16 @@
         <p>
           <strong>1. Режим Single-Core (Точные знаки π):</strong> Использует классическую формулу Джона Мэчина
           <code class="inline-formula">π/4 = 4·arctan(1/5) - arctan(1/239)</code> на базе длинной целочисленной
-          арифметики <code>BigInt</code>. Так как сложность вычисления растёт квадратично O(N²), система очков
-          автоматически нормализуется, чтобы результаты были сопоставимы при любом числе знаков.
+          арифметики <code>BigInt</code>.
         </p>
         <p>
           <strong>2. Режим Multi-Core (Все ядра):</strong> Создаёт пул параллельных потоков <code>Web Workers</code>
-          (по числу логических ядер процессора) и распределяет между ними заданное количество итераций формулы
-          Бэйли — Боруэйна — Плауффа (BBP) и рядов Нилаканты. Это нагружает все доступные ядра ЦП на 100%.
+          и распределяет между ними итерации формулы Бэйли — Боруэйна — Плауффа (BBP) и рядов Нилаканты для 100% нагрузки ядер ЦП.
         </p>
         <p>
-          <strong>3. Полная автономность:</strong> Фоновые потоки создаются через внешний <code>worker.js</code>
-          или динамически через <code>Blob URL</code>, поэтому бенчмарк работает как на веб-хостинге, так и без
-          сервера — прямо из локальной папки, с флешки, на смартфоне, ПК или Smart TV.
+          <strong>3. Два критерия тестирования:</strong> Вы можете тестировать устройство <em>по фиксированному объёму</em>
+          (замерить, за сколько секунд процессор справится с задачей) или <em>по времени (таймеру)</em> — например,
+          запустить стресс-тест ровно на 60 секунд и узнать точное число вычисленных знаков π или миллиардов итераций.
         </p>
       </div>
       <div class="modal-footer">

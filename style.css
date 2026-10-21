@@ -272,7 +272,7 @@ body {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .mode-tab {
@@ -292,6 +292,55 @@ body {
   border-color: var(--cyan-bright);
   color: var(--text-main);
   box-shadow: 0 0 16px var(--cyan-glow);
+}
+
+/* Переключатель критерия: Фикс. объём / По времени */
+.limit-switch-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--bg-inner);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 6px 10px;
+  margin-bottom: 12px;
+}
+
+.limit-switch-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.limit-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  flex: 1;
+}
+
+.limit-tab {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  padding: 6px 10px;
+  border-radius: 7px;
+  font-size: 0.79rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.limit-tab:hover {
+  color: var(--text-main);
+}
+
+.limit-tab.active {
+  background: rgba(16, 185, 129, 0.16);
+  border-color: rgba(16, 185, 129, 0.45);
+  color: #34d399;
 }
 
 .mode-info-box {
@@ -346,7 +395,7 @@ body {
   color: var(--cyan-bright);
 }
 
-/* Поле ручного ввода для Single и Multi */
+/* Поле ручного ввода для Single, Multi и Таймера */
 .custom-input-row {
   display: flex;
   align-items: center;
@@ -616,12 +665,12 @@ body {
 }
 
 .score-big {
-  font-size: 3.6rem;
+  font-size: 3.1rem;
   font-weight: 900;
   background: linear-gradient(90deg, #22d3ee, #34d399);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  line-height: 1.1;
+  line-height: 1.15;
   margin: 6px 0;
   font-variant-numeric: tabular-nums;
 }
@@ -759,6 +808,7 @@ body {
   font-weight: 800;
   padding: 3px 9px;
   border-radius: 6px;
+  display: inline-block;
 }
 
 /* Модальное окно */
@@ -851,7 +901,8 @@ body {
   .telemetry-boxes {
     grid-template-columns: 1fr;
   }
-  .custom-input-row {
+  .custom-input-row,
+  .limit-switch-wrap {
     flex-direction: column;
     align-items: stretch;
   }

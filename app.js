@@ -2,10 +2,12 @@ const STORAGE_KEY = 'pimark_pro_real_history_v24';
 let memoryFallback = [];
 
 const state = {
-  mode: 'single',
+  mode: 'single',       // 'single' | 'multi'
+  limitType: 'fixed',   // 'fixed' (по объёму) | 'timed' (по времени)
   digits: 25000,
   threads: navigator.hardwareConcurrency || 4,
   multiIterations: 200000000,
+  durationSec: 60,      // длительность теста по времени в секундах
   filter: 'all',
   running: false,
   workers: [],
@@ -37,9 +39,13 @@ const el = {
   specEngine: document.getElementById('specEngine'),
 
   modeTabs: document.getElementById('modeTabs'),
+  limitTabs: document.getElementById('limitTabs'),
   modeDescription: document.getElementById('modeDescription'),
+  multiThreadsBox: document.getElementById('multiThreadsBox'),
   singleControls: document.getElementById('singleControls'),
   multiControls: document.getElementById('multiControls'),
+  timeControls: document.getElementById('timeControls'),
+
   singleDigitsLabel: document.getElementById('singleDigitsLabel'),
   digitsPresets: document.getElementById('digitsPresets'),
   singleCustomInput: document.getElementById('singleCustomInput'),
@@ -51,12 +57,18 @@ const el = {
   multiPresets: document.getElementById('multiPresets'),
   multiCustomInput: document.getElementById('multiCustomInput'),
 
+  timeDurationLabel: document.getElementById('timeDurationLabel'),
+  timePresets: document.getElementById('timePresets'),
+  timeCustomInput: document.getElementById('timeCustomInput'),
+
   startBtn: document.getElementById('startBtn'),
   stopBtn: document.getElementById('stopBtn'),
 
   statusBadge: document.getElementById('statusBadge'),
+  teleTimeLabel: document.getElementById('teleTimeLabel'),
   teleTime: document.getElementById('teleTime'),
   teleSpeed: document.getElementById('teleSpeed'),
+  teleProgressLabel: document.getElementById('teleProgressLabel'),
   teleProgress: document.getElementById('teleProgress'),
   mainProgressBar: document.getElementById('mainProgressBar'),
   workersBars: document.getElementById('workersBars'),
@@ -64,7 +76,9 @@ const el = {
   copyPiBtn: document.getElementById('copyPiBtn'),
 
   scoreModeBadge: document.getElementById('scoreModeBadge'),
+  scoreMainCaption: document.getElementById('scoreMainCaption'),
   scoreDisplay: document.getElementById('scoreDisplay'),
+  scoreUnitCaption: document.getElementById('scoreUnitCaption'),
   tierBadge: document.getElementById('tierBadge'),
   bestSingleVal: document.getElementById('bestSingleVal'),
   bestMultiVal: document.getElementById('bestMultiVal'),
@@ -76,12 +90,22 @@ const el = {
 };
 
 function formatIterText(iterCount) {
+  if (iterCount >= 1000000000) {
+    return `${(iterCount / 1e9).toFixed(2)} млрд итераций`;
+  }
   if (iterCount >= 1000000) {
     const mln = iterCount / 1000000;
-    const formattedMln = Number.isInteger(mln) ? mln.toLocaleString('ru-RU') : mln.toFixed(2);
+    const formattedMln = Number.isInteger(mln) ? mln.toLocaleString('ru-RU') : mln.toFixed(1);
     return `${formattedMln} млн итераций`;
   }
   return `${iterCount.toLocaleString('ru-RU')} итераций`;
+}
+
+function formatDurationLabel(sec) {
+  if (sec >= 60 && sec % 60 === 0) {
+    return `${sec} сек (${sec / 60} мин)`;
+  }
+  return `${sec} сек`;
 }
 
 // 1. Живой монитор FPS UI-потока
@@ -181,7 +205,45 @@ function applyDeviceUI() {
   el.threadsSlider.value = state.threads;
   el.threadsCountLabel.textContent = `${state.threads} потоков`;
   el.recommendedThreadsText.textContent = `Логических ядер: ${state.device.cores}`;
-  renderWorkerCells(state.mode === 'single' ? 1 : state.threads);
+  updateControlsVisibility();
+}
+
+// Синхронизация видимости панелей настроек (Single / Multi + Fixed / Timed)
+function updateControlsVisibility() {
+  const isSingle = state.mode === 'single';
+  const isTimed = state.limitType === 'timed';
+
+  // Ползунок потоков показываем всегда, когда выбран Multi-Core
+  el.multiThreadsBox.classList.toggle('hidden', isSingle);
+
+  // Панели нагрузки
+  el.singleControls.classList.toggle('hidden', !isSingle || isTimed);
+  el.multiControls.classList.toggle('hidden', isSingle || isTimed);
+  el.timeControls.classList.toggle('hidden', !isTimed);
+
+  // Бейдж и заголовки карточки результатов
+  const modeStr = isSingle ? 'SINGLE-CORE' : `MULTI-CORE (${state.threads} ПОТОКОВ)`;
+  el.scoreModeBadge.textContent = isTimed ? `${modeStr} • ТАЙМЕР` : modeStr;
+
+  if (isTimed) {
+    el.teleTimeLabel.textContent = 'ТАЙМЕР / ЛИМИТ';
+    el.teleProgressLabel.textContent = 'ПРОГРЕСС ВРЕМЕНИ';
+    el.scoreMainCaption.textContent = 'ВЫЧИСЛЕНО ЗА ОТВЕДЁННОЕ ВРЕМЯ';
+    el.scoreUnitCaption.textContent = isSingle ? 'ТОЧНЫХ ЗНАКОВ ЧИСЛА π' : 'ИТЕРАЦИЙ BBP / НИЛАКАНТЫ';
+    el.modeDescription.innerHTML = isSingle
+      ? 'Непрерывное вычисление знаков числа π на базе <code>BigInt</code> строго в течение заданного времени. Позволяет узнать, сколько реальных знаков π процессор успеет выдать за минуту или другой интервал.'
+      : 'Многопоточный стресс-тест всех ядер в течение заданного времени. Показывает реальный суммарный объём итераций, который процессор способен перемолоть до срабатывания таймера.';
+  } else {
+    el.teleTimeLabel.textContent = 'ВРЕМЯ ВЫПОЛНЕНИЯ';
+    el.teleProgressLabel.textContent = 'ПРОГРЕСС ЗАДАЧИ';
+    el.scoreMainCaption.textContent = 'ИНДЕКС ПРОИЗВОДИТЕЛЬНОСТИ';
+    el.scoreUnitCaption.textContent = 'БАЛЛОВ (PTS)';
+    el.modeDescription.innerHTML = isSingle
+      ? 'Вычисляет точные знаки числа π по формуле Джона Мэчина на базе длинной арифметики <code>BigInt</code> в одном потоке. Идеально для проверки однопоточной производительности ядра ЦП.'
+      : 'Создаёт пул параллельных потоков <code>Web Workers</code> и распределяет между ними заданное число 64-битных итераций (ряды Нилаканты / BBP) для 100% нагрузки всех ядер.';
+  }
+
+  renderWorkerCells(isSingle ? 1 : state.threads);
 }
 
 // 3. Отрисовка индикаторов потоков Web Workers
@@ -212,8 +274,96 @@ function createBenchmarkWorker() {
   }
   const inlineCode = `
     self.onmessage = function (e) {
-      const { mode, workerId, digits, iterations } = e.data;
+      const { mode, limitType, workerId, digits, iterations, durationMs } = e.data;
       const startTime = performance.now();
+
+      if (limitType === 'timed') {
+        const deadline = startTime + durationMs;
+        if (mode === 'single') {
+          const blockDigits = 10000;
+          const guard = 10;
+          const totalBlockDigits = blockDigits + guard;
+          const scale = 10n ** BigInt(totalBlockDigits);
+          const steps5 = Math.ceil(totalBlockDigits / Math.log10(25));
+          const steps239 = Math.ceil(totalBlockDigits / Math.log10(57121));
+          const totalStepsPerBlock = steps5 + steps239;
+          let totalComputedDigits = 0;
+          let lastPiSample = '3.14159265358979323846264338327950288419716939937510...';
+          let lastReportTime = startTime;
+
+          while (performance.now() < deadline) {
+            let stepsInCurrentBlock = 0;
+            let timeUp = false;
+            function arccotTimed(xBig, scaleVal) {
+              const x2 = xBig * xBig;
+              let term = scaleVal / xBig;
+              let sum = term;
+              let n = 1n;
+              let sign = -1n;
+              while (term > 0n) {
+                term = term / x2;
+                const current = term / (2n * n + 1n);
+                if (current === 0n) break;
+                sum += sign * current;
+                sign = -sign;
+                n += 1n;
+                stepsInCurrentBlock++;
+                if (stepsInCurrentBlock % 15 === 0) {
+                  const now = performance.now();
+                  if (now >= deadline) { timeUp = true; break; }
+                  if (now - lastReportTime >= 90) {
+                    lastReportTime = now;
+                    const partialDigits = Math.floor((stepsInCurrentBlock / totalStepsPerBlock) * blockDigits);
+                    const currentTotal = totalComputedDigits + partialDigits;
+                    const timeProgress = Math.min(99, Math.floor(((now - startTime) / durationMs) * 100));
+                    self.postMessage({ type: 'progress', workerId, progress: timeProgress, workDone: currentTotal });
+                  }
+                }
+              }
+              return sum;
+            }
+            const p1 = arccotTimed(5n, scale);
+            let p2 = 0n;
+            if (!timeUp) p2 = arccotTimed(239n, scale);
+            if (!timeUp) {
+              totalComputedDigits += blockDigits;
+              const piBig = 4n * (4n * p1 - p2);
+              const piStr = (piBig / (10n ** BigInt(guard))).toString();
+              lastPiSample = piStr.slice(0, 1) + '.' + piStr.slice(1, 65) + ' ... ' + piStr.slice(-45);
+            } else {
+              totalComputedDigits += Math.floor((stepsInCurrentBlock / totalStepsPerBlock) * blockDigits);
+              break;
+            }
+          }
+          self.postMessage({ type: 'done', workerId, durationMs: performance.now() - startTime, workDone: Math.max(10, totalComputedDigits), sample: lastPiSample });
+          return;
+        } else {
+          let acc = 3.0;
+          let sign = 1.0;
+          let completedIter = 0;
+          let i = 1;
+          const batch = 50000;
+          let lastReportTime = startTime;
+          while (true) {
+            for (let b = 0; b < batch; b++, i++) {
+              const k = 2.0 * i;
+              acc += sign * (4.0 / (k * (k + 1.0) * (k + 2.0)));
+              sign = -sign;
+            }
+            completedIter += batch;
+            const now = performance.now();
+            if (now >= deadline) break;
+            if (now - lastReportTime >= 90) {
+              lastReportTime = now;
+              const timeProgress = Math.min(99, Math.floor(((now - startTime) / durationMs) * 100));
+              self.postMessage({ type: 'progress', workerId, progress: timeProgress, workDone: completedIter });
+            }
+          }
+          self.postMessage({ type: 'done', workerId, durationMs: performance.now() - startTime, workDone: completedIter, sample: acc.toFixed(15) + ' (контрольная сумма потока #' + (workerId + 1) + ')' });
+          return;
+        }
+      }
+
       if (mode === 'single') {
         const guard = 10;
         const totalDigits = digits + guard;
@@ -238,7 +388,7 @@ function createBenchmarkWorker() {
             if (step % reportInterval === 0) {
               const local = Math.min(1, step / approxSteps);
               const progress = Math.min(99, Math.floor((offset + local * weight) * 100));
-              self.postMessage({ type: 'progress', workerId, progress });
+              self.postMessage({ type: 'progress', workerId, progress, workDone: Math.floor((progress / 100) * digits) });
             }
           }
           return sum;
@@ -250,7 +400,7 @@ function createBenchmarkWorker() {
         const formatted = piStr.length > 110
           ? piStr.slice(0, 1) + '.' + piStr.slice(1, 65) + ' ... ' + piStr.slice(-45)
           : piStr.slice(0, 1) + '.' + piStr.slice(1);
-        self.postMessage({ type: 'done', workerId, durationMs: performance.now() - startTime, sample: formatted });
+        self.postMessage({ type: 'done', workerId, durationMs: performance.now() - startTime, workDone: digits, sample: formatted });
       } else {
         let acc = 3.0;
         let sign = 1.0;
@@ -261,13 +411,14 @@ function createBenchmarkWorker() {
           sign = -sign;
           if (i % chunk === 0) {
             const progress = Math.min(99, Math.floor((i / iterations) * 100));
-            self.postMessage({ type: 'progress', workerId, progress });
+            self.postMessage({ type: 'progress', workerId, progress, workDone: i });
           }
         }
         self.postMessage({
           type: 'done',
           workerId,
           durationMs: performance.now() - startTime,
+          workDone: iterations,
           sample: acc.toFixed(15) + ' (контрольная сумма потока #' + (workerId + 1) + ')'
         });
       }
@@ -281,8 +432,20 @@ function createBenchmarkWorker() {
 function startBenchmark() {
   if (state.running) return;
 
-  // Считываем и валидируем актуальные ручные значения перед стартом
-  if (state.mode === 'single') {
+  const isSingle = state.mode === 'single';
+  const isTimed = state.limitType === 'timed';
+
+  // Валидируем ввод перед стартом
+  if (isTimed) {
+    const manualSec = parseFloat(el.timeCustomInput.value);
+    if (!isNaN(manualSec) && manualSec >= 1) {
+      state.durationSec = Math.min(3600, manualSec);
+    } else {
+      state.durationSec = 60;
+      el.timeCustomInput.value = 60;
+    }
+    el.timeDurationLabel.textContent = formatDurationLabel(state.durationSec);
+  } else if (isSingle) {
     const manualDigits = parseInt(el.singleCustomInput.value, 10);
     if (!isNaN(manualDigits) && manualDigits >= 10) {
       state.digits = manualDigits;
@@ -304,27 +467,35 @@ function startBenchmark() {
 
   state.running = true;
 
-  const isSingle = state.mode === 'single';
   const activeThreads = isSingle ? 1 : state.threads;
   renderWorkerCells(activeThreads);
 
   el.startBtn.disabled = true;
   el.stopBtn.classList.remove('hidden');
-  el.statusBadge.textContent = `Выполняется (${activeThreads} пот.)...`;
+  el.statusBadge.textContent = isTimed
+    ? `Таймер: ${state.durationSec} с (${activeThreads} пот.)...`
+    : `Выполняется (${activeThreads} пот.)...`;
   el.statusBadge.style.color = '#22d3ee';
   el.mainProgressBar.style.width = '0%';
   el.teleProgress.textContent = '0%';
   el.scoreDisplay.textContent = '...';
 
   const progresses = new Array(activeThreads).fill(0);
+  const workerWorkDone = new Array(activeThreads).fill(0);
   let finished = 0;
   const startWall = performance.now();
+  const targetDurationMs = state.durationSec * 1000;
 
   clearInterval(state.timerInterval);
   state.timerInterval = setInterval(() => {
-    const sec = (performance.now() - startWall) / 1000;
-    el.teleTime.innerHTML = `${sec.toFixed(3)} <small>с</small>`;
-  }, 45);
+    const elapsedSec = (performance.now() - startWall) / 1000;
+    if (isTimed) {
+      const clamped = Math.min(state.durationSec, elapsedSec);
+      el.teleTime.innerHTML = `${clamped.toFixed(1)} <small>/ ${state.durationSec} с</small>`;
+    } else {
+      el.teleTime.innerHTML = `${elapsedSec.toFixed(3)} <small>с</small>`;
+    }
+  }, 50);
 
   state.workers = [];
   const perWorkerIter = Math.max(100, Math.floor(state.multiIterations / activeThreads));
@@ -337,6 +508,10 @@ function startBenchmark() {
       const msg = e.data;
       if (msg.type === 'progress') {
         progresses[msg.workerId] = msg.progress;
+        if (typeof msg.workDone === 'number') {
+          workerWorkDone[msg.workerId] = msg.workDone;
+        }
+
         const wPct = document.getElementById(`wPct_${msg.workerId}`);
         const wBar = document.getElementById(`wBar_${msg.workerId}`);
         if (wPct) wPct.textContent = `${msg.progress}%`;
@@ -345,8 +520,27 @@ function startBenchmark() {
         const avg = Math.floor(progresses.reduce((a, b) => a + b, 0) / activeThreads);
         el.mainProgressBar.style.width = `${avg}%`;
         el.teleProgress.textContent = `${avg}%`;
+
+        // Обновляем живую скорость и текущий результат во время теста
+        const elapsedSec = Math.max(0.05, (performance.now() - startWall) / 1000);
+        const totalWorkNow = workerWorkDone.reduce((a, b) => a + b, 0);
+        if (totalWorkNow > 0) {
+          if (isSingle) {
+            const liveSpeed = Math.round(totalWorkNow / elapsedSec);
+            el.teleSpeed.innerHTML = `${liveSpeed.toLocaleString('ru-RU')} <small>зн/с</small>`;
+            if (isTimed) el.scoreDisplay.textContent = totalWorkNow.toLocaleString('ru-RU');
+          } else {
+            const liveMlnPerSec = (totalWorkNow / 1e6) / elapsedSec;
+            el.teleSpeed.innerHTML = `${liveMlnPerSec.toFixed(1)} <small>млн ит/с</small>`;
+            if (isTimed) el.scoreDisplay.textContent = `${(totalWorkNow / 1e6).toFixed(0)}M`;
+          }
+        }
       } else if (msg.type === 'done') {
         progresses[msg.workerId] = 100;
+        if (typeof msg.workDone === 'number') {
+          workerWorkDone[msg.workerId] = msg.workDone;
+        }
+
         const wPct = document.getElementById(`wPct_${msg.workerId}`);
         const wBar = document.getElementById(`wBar_${msg.workerId}`);
         if (wPct) wPct.textContent = '100%';
@@ -354,27 +548,33 @@ function startBenchmark() {
 
         finished++;
         if (finished === activeThreads) {
-          finishBenchmark(performance.now() - startWall, activeThreads, msg.sample);
+          const totalWork = workerWorkDone.reduce((a, b) => a + b, 0);
+          finishBenchmark(performance.now() - startWall, activeThreads, totalWork, msg.sample);
         }
       }
     };
 
     worker.postMessage({
       mode: state.mode,
+      limitType: state.limitType,
       workerId: i,
       digits: state.digits,
-      iterations: perWorkerIter
+      iterations: perWorkerIter,
+      durationMs: targetDurationMs
     });
   }
 }
 
-function finishBenchmark(totalMs, activeThreads, sampleText) {
+function finishBenchmark(totalMs, activeThreads, totalWorkDone, sampleText) {
   stopWorkers();
   state.running = false;
   el.startBtn.disabled = false;
   el.stopBtn.classList.add('hidden');
 
+  const isSingle = state.mode === 'single';
+  const isTimed = state.limitType === 'timed';
   const sec = Math.max(0.001, totalMs / 1000);
+
   el.teleTime.innerHTML = `${sec.toFixed(3)} <small>с</small>`;
   el.teleProgress.textContent = '100%';
   el.mainProgressBar.style.width = '100%';
@@ -384,35 +584,66 @@ function finishBenchmark(totalMs, activeThreads, sampleText) {
   let speedStr = '';
   let taskLabel = '';
   let score = 0;
+  let mainDisplayStr = '';
+  let tableResultBadge = '';
 
-  if (state.mode === 'single') {
-    const speed = Math.round(state.digits / sec);
+  if (isSingle) {
+    const computedDigits = isTimed ? totalWorkDone : state.digits;
+    const speed = Math.round(computedDigits / sec);
     speedStr = `${speed.toLocaleString('ru-RU')} зн/с`;
     el.teleSpeed.innerHTML = `${speed.toLocaleString('ru-RU')} <small>зн/с</small>`;
-    taskLabel = `${state.digits.toLocaleString('ru-RU')} знаков π`;
-    const norm = Math.pow(state.digits / 10000, 1.95);
-    score = Math.max(10, Math.round((norm * 2200) / sec));
+
+    if (isTimed) {
+      taskLabel = `⏱️ Таймер ${state.durationSec} с`;
+      // Эквивалентный индекс относительно эталона 10 000 знаков
+      score = Math.max(10, Math.round((computedDigits / sec) * 0.22));
+      mainDisplayStr = computedDigits.toLocaleString('ru-RU');
+      tableResultBadge = `${computedDigits.toLocaleString('ru-RU')} зн. (${score.toLocaleString('ru-RU')} PTS)`;
+    } else {
+      taskLabel = `${state.digits.toLocaleString('ru-RU')} знаков π`;
+      const norm = Math.pow(state.digits / 10000, 1.95);
+      score = Math.max(10, Math.round((norm * 2200) / sec));
+      mainDisplayStr = score.toLocaleString('ru-RU');
+      tableResultBadge = `${score.toLocaleString('ru-RU')} PTS`;
+    }
   } else {
-    const millionPerSec = (state.multiIterations / 1e6) / sec;
+    const computedIter = isTimed ? totalWorkDone : state.multiIterations;
+    const millionPerSec = (computedIter / 1e6) / sec;
     speedStr = `${millionPerSec.toFixed(1)} млн ит/с`;
     el.teleSpeed.innerHTML = `${millionPerSec.toFixed(1)} <small>млн ит/с</small>`;
-    taskLabel = formatIterText(state.multiIterations);
     score = Math.max(10, Math.round(millionPerSec * 128));
+
+    if (isTimed) {
+      taskLabel = `⏱️ Таймер ${state.durationSec} с`;
+      const formattedWork = computedIter >= 1e9
+        ? `${(computedIter / 1e9).toFixed(2)} млрд`
+        : `${(computedIter / 1e6).toFixed(1)} млн`;
+      mainDisplayStr = formattedWork;
+      tableResultBadge = `${formattedWork} ит. (${score.toLocaleString('ru-RU')} PTS)`;
+    } else {
+      taskLabel = formatIterText(state.multiIterations);
+      mainDisplayStr = score.toLocaleString('ru-RU');
+      tableResultBadge = `${score.toLocaleString('ru-RU')} PTS`;
+    }
   }
 
-  el.scoreDisplay.textContent = score.toLocaleString('ru-RU');
+  el.scoreDisplay.textContent = mainDisplayStr;
   el.piPreviewText.textContent = sampleText;
-  el.tierBadge.textContent = getTierTitle(score, state.mode);
+  el.tierBadge.textContent = isTimed
+    ? `${getTierTitle(score, state.mode)} • Индекс: ${score.toLocaleString('ru-RU')} PTS`
+    : getTierTitle(score, state.mode);
 
   saveRealResult({
     device: el.deviceNameInput.value.trim() || state.device.name,
     os: state.device.os,
     modeKey: state.mode,
-    modeLabel: state.mode === 'single' ? 'Single-Core (1T)' : `Multi-Core (${activeThreads}T)`,
+    limitType: state.limitType,
+    modeLabel: isSingle ? 'Single-Core (1T)' : `Multi-Core (${activeThreads}T)`,
     task: taskLabel,
-    timeSec: sec.toFixed(3),
+    timeSec: sec.toFixed(2),
     speed: speedStr,
     score,
+    resultBadge: tableResultBadge,
     date: new Date().toLocaleString('ru-RU', {
       day: '2-digit',
       month: '2-digit',
@@ -424,10 +655,10 @@ function finishBenchmark(totalMs, activeThreads, sampleText) {
 
 function getTierTitle(score, mode) {
   const ref = mode === 'single' ? score : score / 4;
-  if (ref >= 6000) return '🏆 Класс: Экстремальная производительность (Flagship / Desktop)';
+  if (ref >= 6000) return '🏆 Класс: Флагман / Desktop';
   if (ref >= 3000) return '🚀 Класс: Высокая производительность';
   if (ref >= 1200) return '⚡ Класс: Средний сегмент (Mid-Range)';
-  return '📱 Класс: Базовый / Энергоэффективный процессор';
+  return '📱 Класс: Базовый процессор';
 }
 
 function stopWorkers() {
@@ -469,10 +700,14 @@ function saveRealResult(item) {
 
 function renderHistory() {
   const all = getHistory();
-  const filtered = state.filter === 'all' ? all : all.filter((x) => x.modeKey === state.filter);
+  const filtered = all.filter((x) => {
+    if (state.filter === 'all') return true;
+    if (state.filter === 'timed') return x.limitType === 'timed';
+    return x.modeKey === state.filter;
+  });
 
-  const bestS = all.filter((x) => x.modeKey === 'single').reduce((m, x) => Math.max(m, x.score), 0);
-  const bestM = all.filter((x) => x.modeKey === 'multi').reduce((m, x) => Math.max(m, x.score), 0);
+  const bestS = all.filter((x) => x.modeKey === 'single').reduce((m, x) => Math.max(m, x.score || 0), 0);
+  const bestM = all.filter((x) => x.modeKey === 'multi').reduce((m, x) => Math.max(m, x.score || 0), 0);
   el.bestSingleVal.textContent = bestS ? `${bestS.toLocaleString('ru-RU')} PTS` : '—';
   el.bestMultiVal.textContent = bestM ? `${bestM.toLocaleString('ru-RU')} PTS` : '—';
 
@@ -481,7 +716,7 @@ function renderHistory() {
     el.historyTableBody.innerHTML = `
       <tr>
         <td colspan="8" class="empty-history">
-          Записей пока нет. Запустите бенчмарк, чтобы сохранить первый реальный результат этого устройства.
+          Записей для выбранного фильтра пока нет. Запустите бенчмарк, чтобы сохранить реальный результат.
         </td>
       </tr>
     `;
@@ -489,6 +724,7 @@ function renderHistory() {
   }
 
   filtered.forEach((row, idx) => {
+    const badgeText = row.resultBadge || `${Number(row.score).toLocaleString('ru-RU')} PTS`;
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${idx + 1}</td>
@@ -500,7 +736,7 @@ function renderHistory() {
       <td>${escapeHtml(row.task)}</td>
       <td>${row.timeSec} с</td>
       <td>${escapeHtml(row.speed)}</td>
-      <td><span class="score-pill">${Number(row.score).toLocaleString('ru-RU')}</span></td>
+      <td><span class="score-pill">${escapeHtml(badgeText)}</span></td>
       <td style="color:#7e92b2;font-size:0.78rem">${escapeHtml(row.date)}</td>
     `;
     el.historyTableBody.appendChild(tr);
@@ -521,28 +757,24 @@ el.infoModal.addEventListener('click', (e) => {
   if (e.target === el.infoModal) el.infoModal.classList.add('hidden');
 });
 
+// Переключение Single-Core / Multi-Core
 el.modeTabs.addEventListener('click', (e) => {
   const btn = e.target.closest('.mode-tab');
   if (!btn || state.running) return;
   el.modeTabs.querySelectorAll('.mode-tab').forEach((b) => b.classList.remove('active'));
   btn.classList.add('active');
   state.mode = btn.dataset.mode;
+  updateControlsVisibility();
+});
 
-  if (state.mode === 'single') {
-    el.singleControls.classList.remove('hidden');
-    el.multiControls.classList.add('hidden');
-    el.scoreModeBadge.textContent = 'SINGLE-CORE';
-    el.modeDescription.innerHTML =
-      'Вычисляет точные знаки числа π по формуле Джона Мэчина на базе длинной арифметики <code>BigInt</code> в одном потоке. Идеально для проверки однопоточной производительности ядра ЦП.';
-    renderWorkerCells(1);
-  } else {
-    el.singleControls.classList.add('hidden');
-    el.multiControls.classList.remove('hidden');
-    el.scoreModeBadge.textContent = `MULTI-CORE (${state.threads} ПОТОКОВ)`;
-    el.modeDescription.innerHTML =
-      'Создаёт пул параллельных потоков <code>Web Workers</code> и распределяет между ними заданное число 64-битных итераций (ряды Нилаканты / BBP) для 100% нагрузки всех ядер.';
-    renderWorkerCells(state.threads);
-  }
+// Переключение Фиксированный объём / Ограничение по времени
+el.limitTabs.addEventListener('click', (e) => {
+  const btn = e.target.closest('.limit-tab');
+  if (!btn || state.running) return;
+  el.limitTabs.querySelectorAll('.limit-tab').forEach((b) => b.classList.remove('active'));
+  btn.classList.add('active');
+  state.limitType = btn.dataset.limit;
+  updateControlsVisibility();
 });
 
 // Выбор пресета Single-Core
@@ -574,8 +806,7 @@ el.threadsSlider.addEventListener('input', (e) => {
   if (state.running) return;
   state.threads = parseInt(e.target.value, 10);
   el.threadsCountLabel.textContent = `${state.threads} потоков`;
-  el.scoreModeBadge.textContent = `MULTI-CORE (${state.threads} ПОТОКОВ)`;
-  renderWorkerCells(state.threads);
+  updateControlsVisibility();
 });
 
 // Выбор пресета Multi-Core
@@ -598,6 +829,30 @@ el.multiCustomInput.addEventListener('input', (e) => {
     el.multiIterLabel.textContent = formatIterText(val);
     el.multiPresets.querySelectorAll('.pill-btn').forEach((b) => {
       b.classList.toggle('active', parseInt(b.dataset.iter, 10) === val);
+    });
+  }
+});
+
+// Выбор пресета Времени (Таймер)
+el.timePresets.addEventListener('click', (e) => {
+  const btn = e.target.closest('.pill-btn');
+  if (!btn || state.running) return;
+  el.timePresets.querySelectorAll('.pill-btn').forEach((b) => b.classList.remove('active'));
+  btn.classList.add('active');
+  state.durationSec = parseInt(btn.dataset.sec, 10);
+  el.timeCustomInput.value = state.durationSec;
+  el.timeDurationLabel.textContent = formatDurationLabel(state.durationSec);
+});
+
+// Ручной ввод Времени (Таймер)
+el.timeCustomInput.addEventListener('input', (e) => {
+  if (state.running) return;
+  const val = parseFloat(e.target.value);
+  if (!isNaN(val) && val > 0) {
+    state.durationSec = val;
+    el.timeDurationLabel.textContent = formatDurationLabel(val);
+    el.timePresets.querySelectorAll('.pill-btn').forEach((b) => {
+      b.classList.toggle('active', parseInt(b.dataset.sec, 10) === val);
     });
   }
 });
